@@ -1,0 +1,22 @@
+{
+  "uuid": "5f0b2d17-b818-4214-ae0e-3cd09212c5ec",
+  "shortName": "Class Time",
+  "longName": "Class Time",
+  "companyName": "rgrochowicz",
+  "versionCode": 1,
+  "versionLabel": "1.0.0",
+  "watchapp": {
+    "watchface": false
+  },
+  "appKeys": {
+    "dummy": 0
+  },
+  "resources": {
+    "media": [
+      {
+        "type": "font",
+        "name": "FONT_TIME_FONT_48",
+        "file": "fonts/UbuntuCondensed-Regular.ttf"
+      }]
+  }
+}

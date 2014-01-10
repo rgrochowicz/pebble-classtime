@@ -9,13 +9,13 @@ static void update_options_menu_schedule_subtitle();
 typedef struct {
   char *name; //Name of activity
   uint32_t duration; //duration in seconds
-} ClassTimeEntry;
+} __attribute__((__packed__)) ClassTimeEntry;
 
 typedef struct {
   char *name; //Name of schedule
   int num_entries; //Number of entries
   ClassTimeEntry entries[20]; //Entries for that type
-} ScheduleEntry;
+} __attribute__((__packed__)) ScheduleEntry;
 
 
 

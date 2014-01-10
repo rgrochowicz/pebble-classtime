@@ -149,53 +149,35 @@ ScheduleEntry schedules[] = {
   }}
 };
 
-ClassTimeEntry entries[] = {
-  { .name = "Start of Day", .duration = 8*60*60 + 20*60 }, //8:20
-  { .name = "Mods 1-2", .duration = 11*60 }, // + 0:11
-  { .name = "Passing Time", .duration = 4*60}, // + 0:04
-  { .name = "Mods 3-4", .duration = 40*60}, // + 0:40
-  { .name = "Passing Time", .duration = 4*60}, // + 0:04
-  { .name = "Mods 5-6", .duration = 40*60}, // + 0:40
-  { .name = "Passing Time", .duration = 4*60}, // + 0:04
-  { .name = "Mods 7-8", .duration = 40*60}, // + 0:40
-  { .name = "Passing Time", .duration = 4*60}, // + 0:04
-  { .name = "Mods 9-10", .duration = 40*60}, // + 0:40
-  { .name = "Passing Time", .duration = 4*60}, // + 0:04
-  { .name = "Mods 11-12", .duration = 40*60}, // + 0:40
-  { .name = "Passing Time", .duration = 4*60}, // + 0:04
-  { .name = "Mods 13-14", .duration = 40*60}, // + 0:40
-  { .name = "Passing Time", .duration = 4*60}, // + 0:04
-  { .name = "Mods 15-16", .duration = 40*60}, // + 0:40
-  { .name = "Passing Time", .duration = 4*60}, // + 0:04
-  { .name = "Mods 17-18", .duration = 40*60}, // + 0:40
-  { .name = "End of Day", .duration = 9*60*60+37*60} // + 9:37
-};
-
 #define NUM_SCHEDULES sizeof(schedules) / sizeof(ScheduleEntry)
+
+//Persistance keys
 #define NUM_OFFSET_PKEY 1
 #define NUM_SCHED_PKEY 2
 
+//Default values if the persistance values don't exist
 #define NUM_OFFSET_DEFAULT 0
 #define NUM_SCHED_DEFAULT 0
 
 static int num_offset = NUM_OFFSET_DEFAULT;
 static int num_sched = NUM_SCHED_DEFAULT;
 
-
+//Windows
 static Window *window;
 static Window *options_window;
 static NumberWindow *offset_window;
 static SimpleMenuLayer *options_menu_layer;
 
+//Options menu items
 static SimpleMenuItem menu_items[] = {
   { .title = "Offset", .subtitle = "-1 seconds", .callback = menu_select_offset_callback },
   { .title = "Schedule", .subtitle = "Half Day", .callback = menu_select_schedule_callback }
 };
-
 static SimpleMenuSection menu_sections[] = {
   { .num_items = 2, .items = menu_items }
 };
 
+//Layers for the main screen
 static Layer *event_layer;
 static InverterLayer *event_layer_inverter;
 static TextLayer *event_layer_name;
@@ -220,6 +202,7 @@ static ClassTimeEntry current_entry;
 static int current_index = -1;
 static int previous_times = 0;
 
+//Find the current entry in the schedule
 static int findcurrent(int seconds) {
   int current = 0;
   seconds -= current_schedule.entries[current].duration;
@@ -230,6 +213,7 @@ static int findcurrent(int seconds) {
   return current;
 }
 
+//Loop through the entries to get the time elapsed before the index
 //index is exclusive
 static int getprevioustimes(int index) {
   int t = 0;
@@ -244,12 +228,12 @@ static int getprevioustimes(int index) {
 static void handle_second_tick(struct tm *tick_time_arg, TimeUnits units_changes) {
 
   struct tm tick_time;
-
-
   memcpy(&tick_time, tick_time_arg, sizeof(*tick_time_arg));
 
   int secs = tick_time.tm_sec + (tick_time.tm_min * 60) + (tick_time.tm_hour * 60 * 60) - num_offset;
 
+  //Get the current event on new days
+  //Will be triggered on app focus also
   if((units_changes & DAY_UNIT) == DAY_UNIT) {
     current_index = findcurrent(secs);
     current_entry = current_schedule.entries[current_index];
@@ -271,7 +255,7 @@ static void handle_second_tick(struct tm *tick_time_arg, TimeUnits units_changes
   text_layer_set_text(event_layer_remaining, event_remaining);
 
 
-
+  //Update event when the time remaining is 0
   if(remaining_diff == 0) {
     previous_times += current_entry.duration;
     current_index++;
@@ -453,7 +437,7 @@ static void window_load(Window *window) {
 }
 
 static void window_appear(Window *window) {
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "Main window appear");
+
   //make a time struct to init the times without delay
   struct tm *t;
   time_t temp;
@@ -466,6 +450,8 @@ static void window_appear(Window *window) {
 
 void select_long_click_handler(ClickRecognizerRef recongnizer, void *context) {
   vibes_short_pulse();
+
+  //Show the options menu
   window_stack_push(options_window, true /* Animated */);
 }
 
@@ -546,11 +532,13 @@ static void offset_window_selected(struct NumberWindow *number_window, void *con
 
 static void init(void) {
 
+  //get the values from the persist service
   num_offset = persist_exists(NUM_OFFSET_PKEY) ? persist_read_int(NUM_OFFSET_PKEY) : NUM_OFFSET_DEFAULT;
   num_sched = persist_exists(NUM_SCHED_PKEY) ? persist_read_int(NUM_SCHED_PKEY) : NUM_SCHED_DEFAULT;
 
   current_schedule = schedules[num_sched];
 
+  //Create the main window
   window = window_create();
 
   window_set_click_config_provider(window, click_config_provider);
@@ -565,22 +553,21 @@ static void init(void) {
   window_stack_push(window, true /* Animated */);
 
 
+  //Create the options window
   options_window = window_create();
   window_set_window_handlers(options_window, (WindowHandlers) {
     .load = options_window_load,
     .unload = options_window_unload
   });
 
+  //Create the offset number window
   offset_window = number_window_create("Offset", (NumberWindowCallbacks) {
     .decremented = NULL,
     .incremented = NULL,
     .selected = offset_window_selected
   }, NULL);
-  number_window_set_min(offset_window, -99);
+  number_window_set_min(offset_window, -99); //-99 is used because it's 3 characters
   number_window_set_max(offset_window, 999);
-
-  //get the values from the persist service
-
   number_window_set_value(offset_window, num_offset);
 
   tick_timer_service_subscribe(SECOND_UNIT, handle_second_tick);

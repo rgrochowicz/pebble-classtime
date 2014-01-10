@@ -9,3 +9,7 @@ Clone and run in the directory
 ```shell
 pebble build
 ```
+
+Screenshot of app:
+
+![Screenshot](https://raw.github.com/rgrochowicz/pebble-classtime/master/pebble-screenshot.png)

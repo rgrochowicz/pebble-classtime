@@ -152,8 +152,8 @@ ScheduleEntry schedules[] = {
 #define NUM_SCHEDULES sizeof(schedules) / sizeof(ScheduleEntry)
 
 //Persistance keys
-#define NUM_OFFSET_PKEY 1
-#define NUM_SCHED_PKEY 2
+#define NUM_OFFSET_PKEY 0x3214
+#define NUM_SCHED_PKEY 0x3215
 
 //Default values if the persistance values don't exist
 #define NUM_OFFSET_DEFAULT 0
@@ -513,6 +513,7 @@ static void menu_select_schedule_callback(int index, void *ctx) {
   vibes_short_pulse();
   num_sched++;
   if(num_sched >= (int)(NUM_SCHEDULES)) num_sched = 0;
+  persist_write_int(NUM_SCHED_PKEY, num_sched);
   current_schedule = schedules[num_sched];
   update_options_menu_schedule_subtitle();
 }
@@ -524,6 +525,7 @@ static void options_window_unload(Window *window) {
 
 static void offset_window_selected(struct NumberWindow *number_window, void *context) {
   num_offset = number_window_get_value(number_window);
+  persist_write_int(NUM_OFFSET_PKEY, num_offset);
   update_options_menu_offset_subtitle();
   update_options_menu_schedule_subtitle();
   window_stack_pop(true /* Animated */);

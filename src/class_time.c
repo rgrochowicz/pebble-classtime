@@ -1,10 +1,14 @@
 #include <pebble.h>
 
 /* Header stuff */
-static void menu_select_offset_callback(int index, void *ctx);
-static void menu_select_schedule_callback(int index, void *ctx);
+static void options_menu_select_offset_callback(int, void *);
+static void options_menu_select_schedule_callback(int, void *);
 static void update_options_menu_offset_subtitle();
 static void update_options_menu_schedule_subtitle();
+static void click_config_provider(void *); 
+static uint16_t timetable_get_num_rows_callback(MenuLayer *, uint16_t, void *);
+static void timetable_draw_row_callback(GContext *, const Layer *, MenuIndex *, void *);
+static void main_timetable_offset_changed(ScrollLayer *, void *);
 
 typedef struct {
   char *name; //Name of activity
@@ -169,15 +173,18 @@ static NumberWindow *offset_window;
 static SimpleMenuLayer *options_menu_layer;
 
 //Options menu items
-static SimpleMenuItem menu_items[] = {
-  { .title = "Offset", .subtitle = "-1 seconds", .callback = menu_select_offset_callback },
-  { .title = "Schedule", .subtitle = "Half Day", .callback = menu_select_schedule_callback }
+static SimpleMenuItem options_menu_items[] = {
+  { .title = "Offset", .subtitle = "-1 seconds", .callback = options_menu_select_offset_callback },
+  { .title = "Schedule", .subtitle = "Half Day", .callback = options_menu_select_schedule_callback }
 };
-static SimpleMenuSection menu_sections[] = {
-  { .num_items = 2, .items = menu_items }
+static SimpleMenuSection options_menu_sections[] = {
+  { .num_items = 2, .items = options_menu_items }
 };
 
 //Layers for the main screen
+static ScrollLayer *main_scroll_layer;
+static MenuLayer *main_timetable_menu;
+
 static Layer *event_layer;
 static InverterLayer *event_layer_inverter;
 static TextLayer *event_layer_name;
@@ -238,6 +245,8 @@ static void handle_second_tick(struct tm *tick_time_arg, TimeUnits units_changes
     current_index = findcurrent(secs);
     current_entry = current_schedule.entries[current_index];
     previous_times = getprevioustimes(current_index);
+
+    menu_layer_set_selected_index(main_timetable_menu, (MenuIndex) { .row = current_index, .section = 0 }, MenuRowAlignCenter, false);
   }
 
   int remaining_diff = previous_times + current_entry.duration - secs;
@@ -312,6 +321,16 @@ static void window_load(Window *window) {
 
   //define the segment size (height / 3)
   int16_t segment = 42;
+  
+  main_scroll_layer = scroll_layer_create((GRect) { .origin = { 0, 0 }, .size = { bounds.size.w, bounds.size.h } });
+  
+  scroll_layer_set_callbacks(main_scroll_layer, (ScrollLayerCallbacks) {
+    .click_config_provider = click_config_provider,
+    .content_offset_changed_handler = main_timetable_offset_changed
+  });
+  scroll_layer_set_click_config_onto_window(main_scroll_layer, window);
+  scroll_layer_set_content_size(main_scroll_layer, GSize(bounds.size.w, 2000));
+  scroll_layer_set_shadow_hidden(main_scroll_layer, true);
 
   //holds everything for the top
   event_layer = layer_create((GRect) { .origin = { 0, 0 }, .size = { bounds.size.w, segment } });
@@ -353,7 +372,7 @@ static void window_load(Window *window) {
   layer_add_child(event_layer, inverter_layer_get_layer(event_layer_inverter));
 
 
-  layer_add_child(window_layer, event_layer);
+  scroll_layer_add_child(main_scroll_layer, event_layer);
 
 
   //hold everything for the middle
@@ -388,7 +407,12 @@ static void window_load(Window *window) {
   text_layer_set_background_color(time_layer_seconds, GColorClear);
   layer_add_child(time_layer, text_layer_get_layer(time_layer_seconds));
 
-  layer_add_child(window_layer, time_layer);
+  //hide the am/pm symbol if it's in 24 hour mode
+  if(clock_is_24h_style()) {
+    layer_set_hidden(text_layer_get_layer(time_layer_ampm), true);
+  }
+
+  scroll_layer_add_child(main_scroll_layer, time_layer);
 
   //hold everything for the bottom
   date_layer = layer_create((GRect) { .origin = { 0, segment * 3 }, .size = { bounds.size.w, segment } });
@@ -424,19 +448,28 @@ static void window_load(Window *window) {
   date_layer_inverter = inverter_layer_create((GRect) { .origin = { 0, 0 }, .size = { bounds.size.w, segment } });
   layer_add_child(date_layer, inverter_layer_get_layer(date_layer_inverter));
 
+  scroll_layer_add_child(main_scroll_layer, date_layer);
 
-  layer_add_child(window_layer, date_layer);
-
-
-  //hide the am/pm symbol if it's in 24 hour mode
-  if(clock_is_24h_style()) {
-    layer_set_hidden(text_layer_get_layer(time_layer_ampm), true);
-  }
+  main_timetable_menu = menu_layer_create((GRect) { .origin = { 0, segment * 4 }, .size = { bounds.size.w, 1500 } });
+  menu_layer_set_callbacks(main_timetable_menu, NULL, (MenuLayerCallbacks) {
+    .get_num_rows = timetable_get_num_rows_callback,
+    .draw_row = timetable_draw_row_callback
+  });
+  
+  scroll_layer_add_child(main_scroll_layer, menu_layer_get_layer(main_timetable_menu));
+  
+  layer_add_child(window_layer, scroll_layer_get_layer(main_scroll_layer));
 
 
 }
 
 static void window_appear(Window *window) {
+
+  Layer *window_layer = window_get_root_layer(window);
+  GRect bounds = layer_get_bounds(window_layer);
+
+  int content_length = 45 * current_schedule.num_entries + bounds.size.h;
+  scroll_layer_set_content_size(main_scroll_layer, (GSize) { .w = bounds.size.w, .h = content_length });
 
   //make a time struct to init the times without delay
   struct tm *t;
@@ -448,18 +481,32 @@ static void window_appear(Window *window) {
   handle_second_tick(t, SECOND_UNIT | MINUTE_UNIT | HOUR_UNIT | DAY_UNIT | MONTH_UNIT | YEAR_UNIT);
 }
 
-void select_long_click_handler(ClickRecognizerRef recongnizer, void *context) {
+static uint16_t timetable_get_num_rows_callback(MenuLayer *menu_layer, uint16_t section_index, void *data) {
+    return current_schedule.num_entries;
+}
+static void timetable_draw_row_callback(GContext *ctx, const Layer *cell_layer, MenuIndex *cell_index, void *data) {
+    static char subt[] = "00:00:00 -> 00:00:00";
+    int prev = getprevioustimes(cell_index->row);
+    int next = prev + current_schedule.entries[cell_index->row].duration;
+    snprintf(subt, sizeof(subt), "%02d:%02d:%02d -> %02d:%02d:%02d", prev / 3600, (prev % 3600) / 60, prev % 60, next / 3600, (next % 3600) / 60, next % 60);
+    menu_cell_basic_draw(ctx, cell_layer, current_schedule.entries[cell_index->row].name, subt, NULL);
+}
+
+static void select_long_click_handler(ClickRecognizerRef recongnizer, void *context) {
   vibes_short_pulse();
 
   //Show the options menu
   window_stack_push(options_window, true /* Animated */);
 }
 
-void click_config_provider(void *context) {
+static void click_config_provider(void *context) {
   const uint16_t long_click_delay = 1000;
   window_long_click_subscribe(BUTTON_ID_SELECT, long_click_delay, select_long_click_handler, NULL);
 }
 
+static void main_timetable_offset_changed(ScrollLayer *scroll_layer, void *ctx) {
+  scroll_layer_set_shadow_hidden(scroll_layer, scroll_layer_get_content_offset(scroll_layer).y == 0);
+}
 
 static void window_unload(Window *window) {
   text_layer_destroy(event_layer_name);
@@ -477,13 +524,16 @@ static void window_unload(Window *window) {
   text_layer_destroy(date_layer_day_name);
   text_layer_destroy(date_layer_month_day);
   layer_destroy(date_layer);
+  
+  menu_layer_destroy(main_timetable_menu);
+  scroll_layer_destroy(main_scroll_layer);
 }
 
 static void options_window_load(Window *window) {
   Layer *window_layer = window_get_root_layer(options_window);
   GRect bounds = layer_get_frame(window_layer);
 
-  options_menu_layer = simple_menu_layer_create(bounds, options_window, menu_sections, 1, NULL);
+  options_menu_layer = simple_menu_layer_create(bounds, options_window, options_menu_sections, 1, NULL);
 
   layer_add_child(window_layer, simple_menu_layer_get_layer(options_menu_layer));
 
@@ -495,21 +545,21 @@ static void update_options_menu_offset_subtitle() {
   char *subtitle_pattern = num_offset == 1 ? "%d second " : "%d seconds";
   static char stp[] = "           ";
   snprintf(stp, sizeof(stp), subtitle_pattern, num_offset);
-  menu_items[0].subtitle = stp;
+  options_menu_items[0].subtitle = stp;
   layer_mark_dirty(simple_menu_layer_get_layer(options_menu_layer));
 }
 
 static void update_options_menu_schedule_subtitle() {
-  menu_items[1].subtitle = current_schedule.name;
+  options_menu_items[1].subtitle = current_schedule.name;
   layer_mark_dirty(simple_menu_layer_get_layer(options_menu_layer));
 }
 
-static void menu_select_offset_callback(int index, void *ctx) {
+static void options_menu_select_offset_callback(int index, void *ctx) {
   vibes_short_pulse();
   window_stack_push((Window*)offset_window, true /* Animated */);
 }
 
-static void menu_select_schedule_callback(int index, void *ctx) {
+static void options_menu_select_schedule_callback(int index, void *ctx) {
   vibes_short_pulse();
   num_sched++;
   if(num_sched >= (int)(NUM_SCHEDULES)) num_sched = 0;
@@ -543,7 +593,7 @@ static void init(void) {
   //Create the main window
   window = window_create();
 
-  window_set_click_config_provider(window, click_config_provider);
+  //window_set_click_config_provider(window, click_config_provider);
 
   window_set_window_handlers(window, (WindowHandlers) {
     .load = window_load,

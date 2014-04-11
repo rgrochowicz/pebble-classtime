@@ -22,7 +22,6 @@ typedef struct {
 } __attribute__((__packed__)) ScheduleEntry;
 
 
-
 ScheduleEntry schedules[] = {
   { .name = "Half Day (Late)", .num_entries = 19, .entries = {
     { .name = "Start of Day", .duration = 8*60*60 }, //8:00
@@ -150,10 +149,67 @@ ScheduleEntry schedules[] = {
     { .name = "Passing Time", .duration = 4*60}, // + 0:04
     { .name = "Mods 17-18", .duration = 27*60}, // + 0:27
     { .name = "End of Day", .duration = 9*60*60+37*60} // + 9:37
+  }},
+  { .name = "HSPA", .num_entries = 19, .entries = {
+    { .name = "Start of Day", .duration = 10*60*60 + 45*60 }, //10:45
+    { .name = "Mods 1-2", .duration = 28*60 }, // + 0:28
+    { .name = "Passing Time", .duration = 4*60}, // + 0:04
+    { .name = "Mods 3-4", .duration = 20*60}, // + 0:20
+    { .name = "Passing Time", .duration = 4*60}, // + 0:04
+    { .name = "Mods 5-6", .duration = 20*60}, // + 0:20
+    { .name = "Passing Time", .duration = 4*60}, // + 0:04
+    { .name = "Mods 7-8", .duration = 20*60}, // + 0:20
+    { .name = "Passing Time", .duration = 4*60}, // + 0:04
+    { .name = "Mods 9-10", .duration = 20*60}, // + 0:20
+    { .name = "Passing Time", .duration = 4*60}, // + 0:04
+    { .name = "Mods 11-12", .duration = 20*60}, // + 0:20
+    { .name = "Passing Time", .duration = 4*60}, // + 0:04
+    { .name = "Mods 13-14", .duration = 20*60}, // + 0:20
+    { .name = "Passing Time", .duration = 4*60}, // + 0:04
+    { .name = "Mods 15-16", .duration = 20*60}, // + 0:20
+    { .name = "Passing Time", .duration = 4*60}, // + 0:04
+    { .name = "Mods 17-18", .duration = 20*60}, // + 0:20
+    { .name = "End of Day", .duration = 9*60*60 + 35*60} // + 24:00
+  }},
+  { .name = "HSPA (Late)", .num_entries = 19, .entries = {
+    { .name = "Start of Day", .duration = 11*60*60 }, //11:00
+    { .name = "Mods 1-2", .duration = 13*60 }, // + 0:13
+    { .name = "Passing Time", .duration = 4*60}, // + 0:04
+    { .name = "Mods 3-4", .duration = 20*60}, // + 0:20
+    { .name = "Passing Time", .duration = 4*60}, // + 0:04
+    { .name = "Mods 5-6", .duration = 20*60}, // + 0:20
+    { .name = "Passing Time", .duration = 4*60}, // + 0:04
+    { .name = "Mods 7-8", .duration = 20*60}, // + 0:20
+    { .name = "Passing Time", .duration = 4*60}, // + 0:04
+    { .name = "Mods 9-10", .duration = 20*60}, // + 0:20
+    { .name = "Passing Time", .duration = 4*60}, // + 0:04
+    { .name = "Mods 11-12", .duration = 20*60}, // + 0:20
+    { .name = "Passing Time", .duration = 4*60}, // + 0:04
+    { .name = "Mods 13-14", .duration = 20*60}, // + 0:20
+    { .name = "Passing Time", .duration = 4*60}, // + 0:04
+    { .name = "Mods 15-16", .duration = 20*60}, // + 0:20
+    { .name = "Passing Time", .duration = 4*60}, // + 0:04
+    { .name = "Mods 17-18", .duration = 20*60}, // + 0:20
+    { .name = "End of Day", .duration = 9*60*60 + 35*60} // + 24:00
+  }},
+  { .name = "RUPC", .num_entries = 11, .entries = {
+    { .name = "Start of Day", .duration = 8*60*60 }, //8:00
+    { .name = "Sign-in", .duration = 45*60 }, // + 0:45
+    { .name = "Welcome", .duration = 30*60}, // + 0:30
+    { .name = "Return to Labs", .duration = 15*60}, // + 0:15
+    { .name = "Programming", .duration = 2*60*60 + 30*60}, // + 2:30
+    { .name = "Submission", .duration = 15*60}, // + 0:15
+    { .name = "Lunch", .duration = 60*60}, // + 1:00
+    { .name = "Planetarium", .duration = 45*60}, // + 0:45
+    { .name = "Return", .duration = 45*60}, // + 0:45
+    { .name = "Presentation", .duration = 15*60}, // + 0:15
+    { .name = "End of Day", .duration = 9*60*60}, // + 9:00
   }}
 };
 
+
 #define NUM_SCHEDULES sizeof(schedules) / sizeof(ScheduleEntry)
+
 
 //Persistance keys
 #define NUM_OFFSET_PKEY 0x3214
@@ -232,6 +288,10 @@ static int getprevioustimes(int index) {
   return t;
 }
 
+static void update_timetable_selected() {
+    menu_layer_set_selected_index(main_timetable_menu, (MenuIndex) { .row = current_index, .section = 0 }, MenuRowAlignCenter, false);
+}
+
 static void handle_second_tick(struct tm *tick_time_arg, TimeUnits units_changes) {
 
   struct tm tick_time;
@@ -245,8 +305,7 @@ static void handle_second_tick(struct tm *tick_time_arg, TimeUnits units_changes
     current_index = findcurrent(secs);
     current_entry = current_schedule.entries[current_index];
     previous_times = getprevioustimes(current_index);
-
-    menu_layer_set_selected_index(main_timetable_menu, (MenuIndex) { .row = current_index, .section = 0 }, MenuRowAlignCenter, false);
+    update_timetable_selected();
   }
 
   int remaining_diff = previous_times + current_entry.duration - secs;
@@ -270,6 +329,7 @@ static void handle_second_tick(struct tm *tick_time_arg, TimeUnits units_changes
     current_index++;
     if(current_index >= current_schedule.num_entries) current_index = 0;
     current_entry = current_schedule.entries[current_index];
+    update_timetable_selected();
   }
 
   if((units_changes & MINUTE_UNIT) == MINUTE_UNIT) {
